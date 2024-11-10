@@ -4,7 +4,6 @@ from bs4 import BeautifulSoup
 from amadeus import Client, ResponseError
 from openai import OpenAI
 import requests
-import re
 import pandas as pd
 from googlesearch import search
 
@@ -16,6 +15,7 @@ openai_key = st.secrets["openai_key"]
 am_auth = st.secrets["am_auth"]
 am_key = st.secrets["am_key"]
 google_api_key = st.secrets["google_api_key"]
+cse_id = st.secrets["cse"]
 st.set_page_config(layout="wide")
 
 
@@ -84,14 +84,47 @@ amadeus = Client(
     client_secret=am_auth
 )
 
+import requests
+
 def get_hotel_website(hotel_name):
+    # Your Google API key and CSE ID (Custom Search Engine ID)
+
+
+    
+    # Construct the search query
+    query = f"{hotel_name} official website"
+    
+    # URL for Google Custom Search API
+    search_url = "https://www.googleapis.com/customsearch/v1"
+    
+    # Parameters for the search
+    params = {
+        'q': query,
+        'key': google_api_key,
+        'cx': cse_id,  # Custom Search Engine ID
+    }
+    
     try:
-        query = f"{hotel_name} official website"
-        for url in search(query, num_results=1):
-            return url
-    except Exception as e:
-        print(e)
+        # Make the request to the Google Custom Search API
+        response = requests.get(search_url, params=params)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+        
+        # Parse the response
+        search_results = response.json()
+        
+        # Check if there are any results
+        if 'items' in search_results:
+            # Get the top result URL (first item in the list)
+            top_result = search_results['items'][0]['link']
+            return top_result
+        else:
+            return "No website found."
+    
+    except requests.exceptions.RequestException as e:
+        # Handle errors (e.g., rate limits, request failures)
+        print(f"Request failed: {e}")
         return "Unable to get url"
+
 
 def get_airline_name(code):
     return airline_codes.get(code.upper(), "Unknown Airline Code")
@@ -239,11 +272,9 @@ def get_flight_price(departure, destination, depart_date, number_of_people, non_
         st.error(f"API error: {error}")
         return None, None
 
-
-
-def get_hotel_data(city_name, checkin, checkout):
+def get_city_code(city_name):
     try:
-        # Step 1: Get the city code based on the city name
+        #Get the city code based on the city name
         city_info = amadeus.reference_data.locations.get(keyword=city_name, subType='CITY')
         
         # Check if the city is found
@@ -252,6 +283,13 @@ def get_hotel_data(city_name, checkin, checkout):
         
         # Extract the city code from the first result
         city_code = city_info.data[0]['iataCode']
+        return city_code
+    except Exception as e:
+        return "Error in getting city code"
+        print(e)
+
+def get_hotel_data(city_code, checkin, checkout):
+    try:
         
         # Step 2: Get list of hotels in the specified city
         hotel_list = amadeus.reference_data.locations.hotels.by_city.get(cityCode=city_code)
@@ -321,8 +359,11 @@ if duration <= 0:
 # Button to generate travel plan
 if st.button("Generate"):
 
+
+    city_code = get_city_code(city_destination)
+
     actvities = get_activities(city_destination)
-    print(actvities)
+
     # Retrieve and display fight information
     flight, flight_price = get_flight_price(departure, destination, str(depart_date), int(number_of_people))
     return_flight, return_flight_price = get_flight_price(destination, departure, str(return_date), int(number_of_people))
@@ -345,7 +386,7 @@ if st.button("Generate"):
 
 
 
-    hotels = get_hotel_data(city_destination, str(depart_date), str(return_date))
+    hotels = get_hotel_data(city_code, str(depart_date), str(return_date))
 
     if price_point and total_price_flight:
         hotel_info = ""
@@ -439,7 +480,7 @@ if st.button("Generate"):
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "system", "content": prompt}],
-            max_tokens=1200,
+            max_tokens=200,
             temperature=0.7,
         )
 
