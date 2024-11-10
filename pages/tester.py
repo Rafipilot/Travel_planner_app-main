@@ -150,19 +150,29 @@ def get_flight_price(departure, destination, depart_date, number_of_people, non_
 
 
 
-def get_hotel_data(city_code, checkin, checkout):
+def get_hotel_data(city_name, checkin, checkout):
     try:
-        # Step 1: Get list of hotels in the specified city
+        # Step 1: Get the city code based on the city name
+        city_info = amadeus.reference_data.locations.get(keyword=city_name, subType='CITY')
+        
+        # Check if the city is found
+        if not city_info.data:
+            return f"No city found for name: {city_name}"
+        
+        # Extract the city code from the first result
+        city_code = city_info.data[0]['iataCode']
+        
+        # Step 2: Get list of hotels in the specified city
         hotel_list = amadeus.reference_data.locations.hotels.by_city.get(cityCode=city_code)
         
         hotel_offers = []
         hotel_ids = []
         
         # Collect hotel IDs (Limit to 40 for simplicity)
-        for i in hotel_list.data[:50]:  
+        for i in hotel_list.data[:40]:  
             hotel_ids.append(i['hotelId'])
-        print(hotel_ids)
-        # Step 2: Search for hotel offers based on the city and dates
+        
+        # Step 3: Search for hotel offers based on the city and dates
         search_hotels = amadeus.shopping.hotel_offers_search.get(
             hotelIds=hotel_ids,
             checkInDate=checkin,
@@ -171,11 +181,19 @@ def get_hotel_data(city_code, checkin, checkout):
         
         # Prepare hotel offers to print the result
         for hotel in search_hotels.data:
+            # Get the offer URL if it exists
+            offer_url = hotel['offers'][0].get('url', 'URL not available')
+            
             hotel_offers.append({
                 'name': hotel['hotel']['name'],
-                'price': hotel['offers'][0]['price']['total']  # First offer's price
+                'price': hotel['offers'][0]['price']['total'],  # First offer's price
+                'url': offer_url  # URL to book the hotel
             })
         return hotel_offers
+    
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
+
 
 
     except ResponseError as error:

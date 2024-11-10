@@ -146,12 +146,11 @@ def get_flight_price(departure, destination, depart_date, number_of_people, non_
 
 
 
-
 def get_hotel_data(city_name, checkin, checkout):
     try:
         # Step 1: Get the city code based on the city name
         city_info = amadeus.reference_data.locations.get(keyword=city_name, subType='CITY')
-        print(city_info)
+        
         # Check if the city is found
         if not city_info.data:
             return f"No city found for name: {city_name}"
@@ -178,14 +177,20 @@ def get_hotel_data(city_name, checkin, checkout):
         
         # Prepare hotel offers to print the result
         for hotel in search_hotels.data:
+            # Use a Google search URL as a fallback for booking
+            hotel_name = hotel['hotel']['name']
+            google_search_url = f"https://www.google.com/search?q={hotel_name.replace(' ', '+')}+{city_name.replace(' ', '+')}+book"
+            
             hotel_offers.append({
-                'name': hotel['hotel']['name'],
-                'price': hotel['offers'][0]['price']['total']  # First offer's price
+                'name': hotel_name,
+                'price': hotel['offers'][0]['price']['total'],  # First offer's price
+                'url': google_search_url  # Google search URL for booking options
             })
         return hotel_offers
     
     except Exception as e:
         return f"An error occurred: {str(e)}"
+
 
 
   
@@ -247,9 +252,11 @@ if st.button("Generate"):
         per_night_budget = (int(price_point - total_price_flight)) - 100*duration 
         best_hotel = None
         min_price_diff = float('inf')
-        for hotel in hotels:  # Loop through the hotels
+        for hotel in hotels:
             hotel_info += f"- **{hotel['name']}**\n"
             hotel_info += f"  - Price: {hotel['price']}\n"
+            hotel_info += f"  - [Click here to book]({hotel['url']})\n"  
+            print("URL: ", hotel['url'])
             
 
             
@@ -294,7 +301,7 @@ if st.button("Generate"):
             f"- Price: ${total_price_flight} (Return tickets)\n"
             f"- Non-stop: {non_stop}"
             f"- Flight Details: Departure from {departure} and return from {destination}. Include flight duration and any relevant details.\n\n"
-            f"- URL to bookling page of airline"
+            f"- URL to bookling page of airline, try to find it if possible, if not then just leave it out"
 
             f"**Weather info**"
             f"{weather_info}"
@@ -332,7 +339,7 @@ if st.button("Generate"):
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "system", "content": prompt}],
-            max_tokens=1200,
+            max_tokens=300,
             temperature=0.7,
         )
 
