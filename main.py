@@ -15,6 +15,7 @@ from googlesearch import search
 openai_key = st.secrets["openai_key"]
 am_auth = st.secrets["am_auth"]
 am_key = st.secrets["am_key"]
+google_api_key = st.secrets["google_api_key"]
 st.set_page_config(layout="wide")
 
 
@@ -84,12 +85,100 @@ amadeus = Client(
 )
 
 def get_hotel_website(hotel_name):
-    query = f"{hotel_name} official website"
-    for url in search(query, num_results=1):
-        return url
+    try:
+        query = f"{hotel_name} official website"
+        for url in search(query, num_results=1):
+            return url
+    except Exception as e:
+        print(e)
+        return "Unable to get url"
 
 def get_airline_name(code):
     return airline_codes.get(code.upper(), "Unknown Airline Code")
+
+
+
+import requests
+
+def get_activities(city_name):
+
+    geocode_url = f'https://maps.googleapis.com/maps/api/geocode/json?address={city_name}&key={google_api_key}'
+    geocode_response = requests.get(geocode_url)
+
+
+    if geocode_response.status_code == 200:
+        geocode_data = geocode_response.json()
+        if geocode_data['status'] == 'OK' and geocode_data['results']:
+            # Get latitude and longitude
+            lat = geocode_data['results'][0]['geometry']['location']['lat']
+            lng = geocode_data['results'][0]['geometry']['location']['lng']
+            print(f"Latitude: {lat}, Longitude: {lng}")
+
+            #Use the Places API to get nearby activities (tourist attractions)
+            places_url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
+            places_params = {
+                'location': f'{lat},{lng}',  # Lat, Lng coordinates
+                'radius': 5000,  # Search within a 5 km radius 
+                'type': 'tourist_attraction',  # Type of places to search for
+                'key': google_api_key  
+            }
+
+            # Make the request to the Places API
+            places_response = requests.get(places_url, params=places_params)
+
+            if places_response.status_code == 200:
+                places_data = places_response.json()
+
+                # Check if there are any results
+                if places_data['results']:
+                    activities = []
+                    for place in places_data['results']:
+                        name = place.get('name')
+                        address = place.get('vicinity')
+                        place_id = place.get('place_id')
+
+
+                        details_url = 'https://maps.googleapis.com/maps/api/place/details/json'
+                        details_params = {
+                            'place_id': place_id,
+                            'key': google_api_key
+                        }
+
+                        # Make the request to the Place Details API
+                        details_response = requests.get(details_url, params=details_params)
+                        if details_response.status_code == 200:
+                            details_data = details_response.json()
+                            if details_data['status'] == 'OK':
+                                # Get the description from the Place Details API response
+                                description = details_data['result'].get('editorial_summary', {}).get('overview', 'No description available')
+                            else:
+                                description = 'No description available'
+                        else:
+                            description = 'Error retrieving details'
+
+                        # Print the activity details
+                        print(f"Name: {name}")
+                        print(f"Address: {address}")
+                        print(f"Description: {description}")
+                        print('---')
+
+                        # Append the activity details to the list
+                        activities.append([name, address, description])
+
+                    return activities
+                else:
+                    print("No activities found near the city.")
+            else:
+                print("Error retrieving places:", places_response.status_code, places_response.text)
+
+        else:
+            print("No results found for the city.")
+    else:
+        print("Error with geocoding:", geocode_response.status_code, geocode_response.text)
+
+
+
+
 
 
 def get_average_temp(location, depart_date):
@@ -232,6 +321,8 @@ if duration <= 0:
 # Button to generate travel plan
 if st.button("Generate"):
 
+    actvities = get_activities(city_destination)
+    print(actvities)
     # Retrieve and display fight information
     flight, flight_price = get_flight_price(departure, destination, str(depart_date), int(number_of_people))
     return_flight, return_flight_price = get_flight_price(destination, departure, str(return_date), int(number_of_people))
@@ -323,8 +414,8 @@ if st.button("Generate"):
 
 
             f"**Activities and Attractions:**\n"
-            f"- Based on the duration of the trip, suggest activities that are relevant to the destination. "
-            f"Ensure that activities are diverse (sightseeing, cultural experiences, relaxation).\n"
+            f"- Based on the duration of the trip, suggest activities that are relevant to the destination. Maybe like 1-2 activites per day "
+            f"actvities list: {actvities}\n"
             f"- Include brief descriptions of each activity and links to booking or more details if available.\n\n"
 
             f"**Day-by-Day Itinerary:**\n"
@@ -348,7 +439,7 @@ if st.button("Generate"):
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "system", "content": prompt}],
-            max_tokens=300,
+            max_tokens=1200,
             temperature=0.7,
         )
 

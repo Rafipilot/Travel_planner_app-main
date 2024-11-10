@@ -161,7 +161,7 @@ def get_hotel_data(city_name, checkin, checkout):
         
         # Extract the city code from the first result
         city_code = city_info.data[0]['iataCode']
-        
+        print("code" ,city_code)
         # Step 2: Get list of hotels in the specified city
         hotel_list = amadeus.reference_data.locations.hotels.by_city.get(cityCode=city_code)
         
@@ -239,13 +239,18 @@ if st.button("Generate"):
 
 
 
-    airline_name = get_airline_name(flight)
+    if flight:
+        airline_name = get_airline_name(flight)
+    else:
+        airline_name = "No direct flight found"
+
     # Calculate total flight price
     if flight_price is not None and return_flight_price is not None:
         total_price_flight = flight_price + return_flight_price
+        Cost = Cost+ total_price_flight
     else:
         st.error("Failed to retrieve complete flight information.")
-    Cost = Cost+ total_price_flight
+    
     # Retrieve and display hotel information
 
 
