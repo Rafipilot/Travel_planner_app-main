@@ -152,38 +152,36 @@ def get_flight_price(departure, destination, depart_date, number_of_people, non_
 
 
 
-def get_hotel_data(city, checkin, checkout):
-    url = f"https://www.booking.com/searchresults.html?ss={city}&ssne={city}&ssne_untouched={city}&checkin={checkin}&checkout={checkout}&group_adults=2&no_rooms=1&group_children=0&sb_travel_purpose=leisure&selected_currency=USD"
-
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept-Language': 'en-US, en;q=0.5'
-    }
-
+def get_hotel_data(city_code, checkin, checkout):
     try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed: {e}")
-        return []
+        # Step 1: Get list of hotels in the specified city
+        hotel_list = amadeus.reference_data.locations.hotels.by_city.get(cityCode=city_code)
+        
+        hotel_offers = []
+        hotel_ids = []
+        
+        # Collect hotel IDs (Limit to 40 for simplicity)
+        for i in hotel_list.data[:40]:  # Adjust the number as needed
+            hotel_ids.append(i['hotelId'])
+        
+        # Step 2: Search for hotel offers based on the city and dates
+        search_hotels = amadeus.shopping.hotel_offers_search.get(
+            hotelIds=hotel_ids,
+            checkInDate=checkin,
+            checkOutDate=checkout
+        )
+        
+        # Prepare hotel offers to print the result
+        for hotel in search_hotels.data:
+            hotel_offers.append({
+                'name': hotel['hotel']['name'],
+                'price': hotel['offers'][0]['price']['total']  # First offer's price
+            })
+        return hotel_offers
 
-    soup = BeautifulSoup(response.text, 'html.parser')
-    hotels = soup.find_all('div', {'data-testid': 'property-card'})
 
-    hotels_data = []
-    for hotel in hotels:
-        name = hotel.find('div', {'data-testid': 'title'}).text.strip() if hotel.find('div', {'data-testid': 'title'}) else "N/A"
-        location = hotel.find('span', {'data-testid': 'address'}).text.strip() if hotel.find('span', {'data-testid': 'address'}) else "N/A"
-        price = hotel.find('span', {'data-testid': 'price-and-discounted-price'}).text.strip() if hotel.find('span', {'data-testid': 'price-and-discounted-price'}) else "N/A"
-        link = hotel.find('a', href=True)['href'] if hotel.find('a', href=True) else None
-
-        # Complete the link if it's a relative URL
-        if link and not link.startswith("http"):
-            link = "https://www.booking.com" + link
-
-        hotels_data.append({'name': name, 'location': location, 'price': price, 'url': link})
-
-    return hotels_data
+    except ResponseError as error:
+        print(f"Error: {error.response.body}")
 
   
 
@@ -233,30 +231,43 @@ if st.button("Generate"):
         st.error("Failed to retrieve complete flight information.")
     Cost = Cost+ total_price_flight
     # Retrieve and display hotel information
+
+
+
+
     hotels = get_hotel_data(city_destination, str(depart_date), str(return_date))
-    hotel_summary = "\n".join([f"{hotel['name']} - {hotel['price']} - {hotel['location']}" for hotel in hotels[:5]])
 
-
-    if price_point and duration and number_of_people and departure and destination:
+    if price_point and total_price_flight:
         hotel_info = ""
-        per_night_budget = (int(price_point - total_price_flight)) -1000
+        per_night_budget = (int(price_point - total_price_flight)) - 1000  # Adjust the budget
         best_hotel = None
         min_price_diff = float('inf')
-        
-        for hotel in hotels[:20]:  # Loop through the top 20 hotels
+
+        for hotel in hotels:  # Loop through the hotels
             hotel_info += f"- **{hotel['name']}**\n"
             hotel_info += f"  - Price: {hotel['price']}\n"
-            hotel_info += f"  - Location: {hotel['location']}\n"
-           # hotel_info += f"  - Brief Description: [Brief Description of Hotel]\n\n"
             
+            # Print the current hotel information (optional)
+            print("Hotel info: ", hotel_info)
+            
+            # Extract price from the price string (removes non-numeric characters)
             price_str = hotel['price']
-            price_numeric = int(re.sub(r'[^\d]', '', price_str))
+            price_numeric = int(re.sub(r'[^\d]', '', price_str))  # Strip non-numeric characters
+            
+            # Calculate the price difference from the per-night budget
             price_diff = abs(per_night_budget - price_numeric)
             
             # Select the hotel with the smallest difference to the per-night budget
             if price_diff < min_price_diff:
                 min_price_diff = price_diff
                 best_hotel = hotel
+
+        # Return the best hotel found
+        if best_hotel:
+            print(f"Best Hotel: {best_hotel['name']}")
+            print(f"Best Price: {best_hotel['price']}")
+        else:
+            print("No suitable hotel found.")
             
         # After the loop, best_hotel will be the best-matching hotel based on budget
         price_str = best_hotel['price']
@@ -289,7 +300,7 @@ if st.button("Generate"):
             f"**Hotel Recommendation**\n"
             f"{best_hotel}"
             f"- Price ({duration-1} nights): {best_hotel['price']}"
-            f"  - Location: {best_hotel['location']}"
+ 
 
 
             f"**Activities and Attractions:**\n"

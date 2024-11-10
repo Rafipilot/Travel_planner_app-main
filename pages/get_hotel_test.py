@@ -11,84 +11,50 @@ amadeus = Client(
     client_secret=am_auth
 )
 
-def get_city_code(city_name):
+
+
+
+def hotel_search(origin, checkin_date, checkout_date):
     try:
-        # Fetch city code dynamically using the correct method
-        response = amadeus.reference_data.locations.get(keyword=city_name)
+        # Step 1: Get list of hotels in the specified city
+        hotel_list = amadeus.reference_data.locations.hotels.by_city.get(cityCode=origin)
         
-        if response.status_code == 200 and 'data' in response.result:
-            if len(response.result['data']) > 0:
-                # Get the first result (if there are multiple)
-                city_code = response.result['data'][0]['cityCode']
-                print(f"City code for {city_name}: {city_code}")
-                return city_code
-            else:
-                print(f"No city found for {city_name}.")
-                return None
-        else:
-            print(f"Error in response: {response.result}")
-            return None
-    
-    except ResponseError as error:
-        print(f"Error retrieving city code: {error}")
-        return None
-
-def get_hotel_offers(city_code, check_in_date, check_out_date, adults=1):
-    hotel_offers = []
-    
-    # Convert dates to the correct format (YYYY-MM-DD)
-    check_in_date_str = check_in_date.strftime('%Y-%m-%d')
-    check_out_date_str = check_out_date.strftime('%Y-%m-%d')
-    
-    print(f"Requesting hotel offers for {city_code} from {check_in_date_str} to {check_out_date_str}")
-
-    try:
-        # Correct endpoint for getting hotel offers
-        response = amadeus.shopping.hotel_offers_search.get(
-            cityCode=city_code,
-            checkInDate=check_in_date_str,
-            checkOutDate=check_out_date_str,
-            adults=adults
+        hotel_offers = []
+        hotel_ids = []
+        
+        # Collect hotel IDs (Limit to 40 for simplicity)
+        for i in hotel_list.data[:40]:  # Adjust the number as needed
+            hotel_ids.append(i['hotelId'])
+        
+        # Step 2: Search for hotel offers based on the city and dates
+        search_hotels = amadeus.shopping.hotel_offers_search.get(
+            hotelIds=hotel_ids,
+            checkInDate=checkin_date,
+            checkOutDate=checkout_date
         )
         
-        print(f"Response Status: {response.status_code}")
+        # Prepare hotel offers to print the result
+        for hotel in search_hotels.data:
+            hotel_offers.append({
+                'name': hotel['hotel']['name'],
+                'price': hotel['offers'][0]['price']['total']  # First offer's price
+            })
         
-        # Check if the response is successful
-        if response.status_code == 200 and 'data' in response.result:
-            offers = response.result['data']
-            for offer in offers:
-                hotel_offer = {
-                    'hotel_name': offer['hotel']['name'],
-                    'address': offer['hotel']['address']['lines'],
-                    'room_details': [
-                        {
-                            'room_type': room['room']['type'],
-                            'price': room['offers'][0]['price']['total'],
-                            'currency': room['offers'][0]['price']['currency'],
-                            'cancellation_policy': room['offers'][0]['policies']['cancellation']['description']
-                        }
-                        for room in offer['rooms']
-                    ]
-                }
-                hotel_offers.append(hotel_offer)
-
+        # Print the hotel names and prices
+        if hotel_offers:
+            for offer in hotel_offers:
+                print(f"Hotel: {offer['name']}, Price: {offer['price']}")
         else:
-            print(f"Error in response: {response.result}")
-    
+            print("No hotels found for your search criteria.")
+
     except ResponseError as error:
-        print(f"API error: {error}")
-    
-    return hotel_offers
+        print(f"Error: {error.response.body}")
 
-# Streamlit input fields
-depart_date = st.date_input("Departure Date:")
-return_date = st.date_input("Return Date:")
+# Example usage
+origin = "LON"  # City code for London
+checkin_date = "2024-12-01"
+checkout_date = "2024-12-10"
 
-# Get the city code dynamically if needed
-city_code = get_city_code("Paris")  # Replace with the desired city name
+hotel_search(origin, checkin_date, checkout_date)
 
-# Example of calling the function with city code 'PAR' (Paris)
-if depart_date and return_date and city_code:
-    hotel_offers = get_hotel_offers(city_code, depart_date, return_date)
-    st.write(hotel_offers)
 
