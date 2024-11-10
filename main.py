@@ -244,7 +244,7 @@ if st.button("Generate"):
 
     if price_point and total_price_flight:
         hotel_info = ""
-        per_night_budget = (int(price_point - total_price_flight)) - 1000  
+        per_night_budget = (int(price_point - total_price_flight)) - 100*duration 
         best_hotel = None
         min_price_diff = float('inf')
         for hotel in hotels:  # Loop through the hotels
@@ -273,9 +273,8 @@ if st.button("Generate"):
             print("No suitable hotel found.")
             
         # After the loop, best_hotel will be the best-matching hotel based on budget
-        price_str = best_hotel['price']
-        price_numeric = int(re.sub(r'[^\d]', '', price_str))
-        Cost = Cost+  price_numeric
+        price = int(float(hotel['price']))
+        Cost = Cost+  price  
         Cost = Cost + 20*int(duration)*2*int(number_of_people) #Adding estimate for meals
         # Constructing the GPT prompt 
         prompt = (
@@ -303,6 +302,7 @@ if st.button("Generate"):
             f"**Hotel Recommendation**\n"
             f"{best_hotel}"
             f"- Price ({duration-1} nights): {best_hotel['price']}"
+            f"- CLick here to book your stay at {best_hotel}"
  
 
 
@@ -332,7 +332,7 @@ if st.button("Generate"):
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "system", "content": prompt}],
-            max_tokens=100,
+            max_tokens=1200,
             temperature=0.7,
         )
 
