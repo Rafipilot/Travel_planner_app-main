@@ -85,15 +85,11 @@ amadeus = Client(
 def get_airline_name(code):
     return airline_codes.get(code.upper(), "Unknown Airline Code")
 
-import requests
-from bs4 import BeautifulSoup
 
 def get_average_temp(location, depart_date):
     # Extract the month from the depart_date
     location = location.lower()
     month = depart_date.strftime("%B").lower()
-    print(month)
-    print(location)
     # Format the URL to match the location and month
     url = f"https://www.holiday-weather.com/{location}/averages/{month}/"
     
@@ -111,7 +107,6 @@ def get_average_temp(location, depart_date):
     if temp_div:
         # Extract the temperature text
         temp = temp_div.text.strip()
-        print("temp: ", temp)
         return f"The average temperature in {location} during {month} is {temp}."
     else:
         return f"Could not find temperature information for {location} in {month}."
@@ -152,19 +147,29 @@ def get_flight_price(departure, destination, depart_date, number_of_people, non_
 
 
 
-def get_hotel_data(city_code, checkin, checkout):
+def get_hotel_data(city_name, checkin, checkout):
     try:
-        # Step 1: Get list of hotels in the specified city
+        # Step 1: Get the city code based on the city name
+        city_info = amadeus.reference_data.locations.get(keyword=city_name, subType='CITY')
+        print(city_info)
+        # Check if the city is found
+        if not city_info.data:
+            return f"No city found for name: {city_name}"
+        
+        # Extract the city code from the first result
+        city_code = city_info.data[0]['iataCode']
+        
+        # Step 2: Get list of hotels in the specified city
         hotel_list = amadeus.reference_data.locations.hotels.by_city.get(cityCode=city_code)
         
         hotel_offers = []
         hotel_ids = []
         
         # Collect hotel IDs (Limit to 40 for simplicity)
-        for i in hotel_list.data[:40]:  # Adjust the number as needed
+        for i in hotel_list.data[:40]:  
             hotel_ids.append(i['hotelId'])
         
-        # Step 2: Search for hotel offers based on the city and dates
+        # Step 3: Search for hotel offers based on the city and dates
         search_hotels = amadeus.shopping.hotel_offers_search.get(
             hotelIds=hotel_ids,
             checkInDate=checkin,
@@ -178,10 +183,10 @@ def get_hotel_data(city_code, checkin, checkout):
                 'price': hotel['offers'][0]['price']['total']  # First offer's price
             })
         return hotel_offers
+    
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
 
-
-    except ResponseError as error:
-        print(f"Error: {error.response.body}")
 
   
 
@@ -239,23 +244,21 @@ if st.button("Generate"):
 
     if price_point and total_price_flight:
         hotel_info = ""
-        per_night_budget = (int(price_point - total_price_flight)) - 1000  # Adjust the budget
+        per_night_budget = (int(price_point - total_price_flight)) - 1000  
         best_hotel = None
         min_price_diff = float('inf')
-
         for hotel in hotels:  # Loop through the hotels
             hotel_info += f"- **{hotel['name']}**\n"
             hotel_info += f"  - Price: {hotel['price']}\n"
             
-            # Print the current hotel information (optional)
-            print("Hotel info: ", hotel_info)
+
             
             # Extract price from the price string (removes non-numeric characters)
-            price_str = hotel['price']
-            price_numeric = int(re.sub(r'[^\d]', '', price_str))  # Strip non-numeric characters
+            price = int(float(hotel['price']))
+
             
             # Calculate the price difference from the per-night budget
-            price_diff = abs(per_night_budget - price_numeric)
+            price_diff = abs(per_night_budget - price)
             
             # Select the hotel with the smallest difference to the per-night budget
             if price_diff < min_price_diff:
@@ -329,7 +332,7 @@ if st.button("Generate"):
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "system", "content": prompt}],
-            max_tokens=200,
+            max_tokens=100,
             temperature=0.7,
         )
 

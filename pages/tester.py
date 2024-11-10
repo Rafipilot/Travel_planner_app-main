@@ -7,6 +7,7 @@ import requests
 import re
 import pandas as pd
 
+
 # Importing secret keys
 openai_key = st.secrets["openai_key"]
 am_auth = st.secrets["am_auth"]
@@ -14,10 +15,55 @@ am_key = st.secrets["am_key"]
 st.set_page_config(layout="wide")
 
 
+st.markdown("""
+    <style>
+        .main {
+            background-color: #f7f7f7;
+            font-family: 'Arial', sans-serif;
+        }
+        .stButton>button {
+            background-color: #4CAF50;
+            color: white;
+            font-size: 18px;
+            padding: 15px;
+            border-radius: 8px;
+            border: none;
+        }
+        .stButton>button:hover {
+            background-color: #45a049;
+            color: white;
+        }
+        .stSlider>div>label {
+            font-size: 16px;
+            color: #333;
+        }
+        .stTextInput>div>label {
+            font-size: 16px;
+            color: #333;
+        }
+        .stTitle {
+            font-size: 32px;
+            color: #1e2a47;
+            font-weight: bold;
+        }
+        .stSubheader {
+            font-size: 20px;
+            font-weight: 500;
+            color: #444;
+        }
+        .stWarning>div>label {
+            color: #f8d7da;
+            background-color: #f1b0b7;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
-# Load the CSV file directly from the URL for getting airline name from code
-url = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airlines.dat"
+
+
+# Load the CSV file directly from the URL For getting airline name from code
+url = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airlines.dat" #Data set for code to name
 df = pd.read_csv(url, header=None, names=["AirlineID", "Name", "Alias", "IATA", "ICAO", "Callsign", "Country", "Active"])
+
 
 # Replace \N with NaN for missing values
 df.replace(r'\\N', pd.NA, inplace=True, regex=True)
@@ -34,49 +80,66 @@ amadeus = Client(
     client_secret=am_auth
 )
 
+
+
 def get_airline_name(code):
     return airline_codes.get(code.upper(), "Unknown Airline Code")
 
+
 def get_average_temp(location, depart_date):
+    # Extract the month from the depart_date
     location = location.lower()
     month = depart_date.strftime("%B").lower()
+    print(month)
+    print(location)
+    # Format the URL to match the location and month
     url = f"https://www.holiday-weather.com/{location}/averages/{month}/"
     
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error fetching weather info: {e}")
-        return None
+    # Send a request to the URL
+    response = requests.get(url)
+    if response.status_code != 200:
+        print("error in weather")
+        return f"Error: Unable to access page for {location} in {month}."
 
+    # Parse the page content
     soup = BeautifulSoup(response.text, 'html.parser')
+
+    # Find the div containing the average temperature
     temp_div = soup.find("div", class_="p-2 pl-md-3 text fw-600")
     if temp_div:
+        # Extract the temperature text
         temp = temp_div.text.strip()
+        print("temp: ", temp)
         return f"The average temperature in {location} during {month} is {temp}."
     else:
         return f"Could not find temperature information for {location} in {month}."
 
+
+
 def get_flight_price(departure, destination, depart_date, number_of_people, non_stop="true"):
     try:
+        # API call to Amadeus for direct flight offers only
         response = amadeus.shopping.flight_offers_search.get(
             originLocationCode=departure,
             destinationLocationCode=destination,
             departureDate=depart_date,
             adults=number_of_people,
             travelClass="ECONOMY",
-            nonStop=non_stop
+            nonStop=non_stop  # Only direct flights
         )
-
+        
+        # Parse the response to retrieve the carrier name and price
         if response.status_code == 200:
             if len(response.data) == 0:
                 st.error("No direct flights from the location selected!")
                 return None, None
-
+            
+            # Loop through the flight offers to find a valid one
             for offer in response.data:
                 carrier_code = offer["itineraries"][0]["segments"][0]["carrierCode"]
                 price = float(offer["price"]["total"])  # Convert price to float
                 return carrier_code, price
+        
         else:
             st.error("Unable to retrieve flight data.")
             return None, None
@@ -84,42 +147,48 @@ def get_flight_price(departure, destination, depart_date, number_of_people, non_
         st.error(f"API error: {error}")
         return None, None
 
-def get_hotel_data(city, checkin, checkout):
-    url = f"https://www.booking.com/searchresults.html?ss={city}&ssne={city}&checkin={checkin}&checkout={checkout}&group_adults=2&no_rooms=1&group_children=0&selected_currency=USD"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept-Language': 'en-US, en;q=0.5'
-    }
 
+
+
+def get_hotel_data(city_code, checkin, checkout):
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        st.error(f"Request failed: {e}")
-        return []
+        # Step 1: Get list of hotels in the specified city
+        hotel_list = amadeus.reference_data.locations.hotels.by_city.get(cityCode=city_code)
+        
+        hotel_offers = []
+        hotel_ids = []
+        
+        # Collect hotel IDs (Limit to 40 for simplicity)
+        for i in hotel_list.data[:50]:  
+            hotel_ids.append(i['hotelId'])
+        print(hotel_ids)
+        # Step 2: Search for hotel offers based on the city and dates
+        search_hotels = amadeus.shopping.hotel_offers_search.get(
+            hotelIds=hotel_ids,
+            checkInDate=checkin,
+            checkOutDate=checkout
+        )
+        
+        # Prepare hotel offers to print the result
+        for hotel in search_hotels.data:
+            hotel_offers.append({
+                'name': hotel['hotel']['name'],
+                'price': hotel['offers'][0]['price']['total']  # First offer's price
+            })
+        return hotel_offers
 
-    soup = BeautifulSoup(response.text, 'html.parser')
-    hotels = soup.find_all('div', {'data-testid': 'property-card'})
-    hotels_data = []
 
-    for hotel in hotels:
-        name = hotel.find('div', {'data-testid': 'title'}).text.strip() if hotel.find('div', {'data-testid': 'title'}) else "N/A"
-        location = hotel.find('span', {'data-testid': 'address'}).text.strip() if hotel.find('span', {'data-testid': 'address'}) else "N/A"
-        price = hotel.find('span', {'data-testid': 'price-and-discounted-price'}).text.strip() if hotel.find('span', {'data-testid': 'price-and-discounted-price'}) else "N/A"
-        link = hotel.find('a', href=True)['href'] if hotel.find('a', href=True) else None
+    except ResponseError as error:
+        print(f"Error: {error.response.body}")
 
-        if link and not link.startswith("http"):
-            link = "https://www.booking.com" + link
-
-        hotels_data.append({'name': name, 'location': location, 'price': price, 'url': link})
-
-    return hotels_data
+  
 
 # OpenAI client initialization
 client = OpenAI(api_key=openai_key)
 
 # Display Title of the App
 st.title("CityTravel.AI")
+
 
 # Input fields
 number_of_people = st.text_input("Number of people traveling:")
@@ -131,70 +200,81 @@ depart_date = st.date_input("Departure Date:")
 return_date = st.date_input("Return Date:")
 Cost = int(0)
 non_stop = "Yes"
-
-# Validate dates
+# Calculate duration and validate dates
 d1 = datetime.strptime(str(depart_date), "%Y-%m-%d")
 d2 = datetime.strptime(str(return_date), "%Y-%m-%d")
 duration = (d2 - d1).days
 weather_info = get_average_temp(city_destination, depart_date)
-
 if duration <= 0:
     st.error("Return date must be after departure date.")
 
 # Button to generate travel plan
 if st.button("Generate"):
-    # Retrieve flight information
+
+    # Retrieve and display fight information
     flight, flight_price = get_flight_price(departure, destination, str(depart_date), int(number_of_people))
     return_flight, return_flight_price = get_flight_price(destination, departure, str(return_date), int(number_of_people))
-    
     if flight is None or return_flight is None:
         non_stop = "No"
         flight, flight_price = get_flight_price(departure, destination, str(depart_date), int(number_of_people), non_stop="false")
         return_flight, return_flight_price = get_flight_price(destination, departure, str(return_date), int(number_of_people), non_stop="false")
 
+
+
     airline_name = get_airline_name(flight)
-    
     # Calculate total flight price
     if flight_price is not None and return_flight_price is not None:
         total_price_flight = flight_price + return_flight_price
     else:
         st.error("Failed to retrieve complete flight information.")
-    
-    Cost = Cost + total_price_flight
+    Cost = Cost+ total_price_flight
+    # Retrieve and display hotel information
 
-    # Retrieve hotel information
+
+
+
     hotels = get_hotel_data(city_destination, str(depart_date), str(return_date))
-    
-    if not hotels:
-        st.warning("No hotels found for the selected dates and location.")
-        hotel_info = "No hotels available."
-    else:
-        hotel_info = "\n".join([f"{hotel['name']} - {hotel['price']} - {hotel['location']}" for hotel in hotels[:5]])
 
-    # Calculate best hotel based on budget
-    if price_point and duration and number_of_people and departure and destination:
-        per_night_budget = (int(price_point - total_price_flight)) - 1000
+    if price_point and total_price_flight:
+        hotel_info = ""
+        per_night_budget = (int(price_point - total_price_flight)) - 1000  
         best_hotel = None
         min_price_diff = float('inf')
+        print(per_night_budget)
+        for hotel in hotels:  # Loop through the hotels
+            hotel_info += f"- **{hotel['name']}**\n"
+            hotel_info += f"  - Price: {hotel['price']}\n"
+            
+            # Print the current hotel information (optional)
+            
+            # Extract price from the price string (removes non-numeric characters)
+            price = int(float(hotel['price']))
 
-        for hotel in hotels[:20]:  # Loop through the top 20 hotels
-            price_str = hotel['price']
-            price_numeric = int(re.sub(r'[^\d]', '', price_str)) if price_str.isdigit() else 0
-            price_diff = abs(per_night_budget - price_numeric)
+            print(price)
+            print(type(price))
+            
+            # Calculate the price difference from the per-night budget
+            price_diff = abs(per_night_budget - price)
             
             # Select the hotel with the smallest difference to the per-night budget
             if price_diff < min_price_diff:
                 min_price_diff = price_diff
                 best_hotel = hotel
 
-        # After the loop, best_hotel will be the best-matching hotel based on budget
-        if best_hotel is None:
-            st.warning("No suitable hotels found within your budget.")
+        # Return the best hotel found
+        if best_hotel:
+            print(f"Best Hotel: {best_hotel['name']}")
+            print(f"Best Price: {best_hotel['price']}")
         else:
-            price_str = best_hotel['price']
-            price_numeric = int(re.sub(r'[^\d]', '', price_str))
-            Cost = Cost + price_numeric
-            Cost = Cost + 20 * int(duration) * 2
+            print("No suitable hotel found.")
+            
+        # After the loop, best_hotel will be the best-matching hotel based on budget
+        price_str = best_hotel['price']
+        price_numeric = int(re.sub(r'[^\d]', '', price_str))
+        Cost = Cost+  price_numeric
+        Cost = Cost + 20*int(duration)*2*int(number_of_people) #Adding estimate for meals
+
+
 
     st.write(f"**Total Travel Cost**: ${Cost}")
     st.write(weather_info)
