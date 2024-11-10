@@ -6,6 +6,9 @@ from openai import OpenAI
 import requests
 import re
 import pandas as pd
+from googlesearch import search
+
+
 
 
 # Importing secret keys
@@ -80,7 +83,10 @@ amadeus = Client(
     client_secret=am_auth
 )
 
-
+def get_hotel_website(hotel_name):
+    query = f"{hotel_name} official website"
+    for url in search(query, num_results=1):
+        return url
 
 def get_airline_name(code):
     return airline_codes.get(code.upper(), "Unknown Airline Code")
@@ -177,19 +183,22 @@ def get_hotel_data(city_name, checkin, checkout):
         
         # Prepare hotel offers to print the result
         for hotel in search_hotels.data:
-            # Use a Google search URL as a fallback for booking
+            # Get the hotel name
             hotel_name = hotel['hotel']['name']
-            google_search_url = f"https://www.google.com/search?q={hotel_name.replace(' ', '+')}+{city_name.replace(' ', '+')}+book"
+            
+            # Use Google search to find the official hotel website
+            hotel_website = get_hotel_website(hotel_name)
             
             hotel_offers.append({
                 'name': hotel_name,
                 'price': hotel['offers'][0]['price']['total'],  # First offer's price
-                'url': google_search_url  # Google search URL for booking options
+                'url': hotel_website  # Use the official website URL
             })
         return hotel_offers
     
     except Exception as e:
         return f"An error occurred: {str(e)}"
+
 
 
 
