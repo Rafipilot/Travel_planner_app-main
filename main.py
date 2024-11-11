@@ -65,15 +65,15 @@ st.markdown("""
 
 
 # Load the CSV file directly from the URL For getting airline name from code
-url = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airlines.dat" #Data set for code to name
-df = pd.read_csv(url, header=None, names=["AirlineID", "Name", "Alias", "IATA", "ICAO", "Callsign", "Country", "Active"])
+url_airline_codes = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airlines.dat" #Data set for code to name
+df_ac = pd.read_csv(url_airline_codes, header=None, names=["AirlineID", "Name", "Alias", "IATA", "ICAO", "Callsign", "Country", "Active"])
 
 
 # Replace \N with NaN for missing values
-df.replace(r'\\N', pd.NA, inplace=True, regex=True)
+df_ac.replace(r'\\N', pd.NA, inplace=True, regex=True)
 
 # Filter out rows without IATA codes
-df = df[df['IATA'].notna()]
+df = df_ac[df_ac['IATA'].notna()]
 
 # Create a dictionary of IATA codes to airline names
 airline_codes = dict(zip(df['IATA'], df['Name']))
@@ -118,6 +118,7 @@ def get_hotel_website(name):
 def get_airline_name(code):
     try:
         code = airline_codes.get(code.upper(), "Unknown Airline Code")
+        print("airline code :", code)
     except Exception as e:
         print("Error in getting airline code : ", e)
     return 
@@ -249,42 +250,6 @@ def get_flight_price(departure, destination, depart_date, number_of_people, non_
         print(f"Error Description: {error.description}")
         return None, None
 
-
-def get_city_code(city_name, url="https://www.serveto.com/img/bloques/1432804003.pdf"):
-    # Step 1: Download the PDF
-    pdf_path = "city_codes.pdf"
-    response = requests.get(url)
-    with open(pdf_path, "wb") as file:
-        file.write(response.content)
-    print("PDF downloaded successfully!")
-
-    # Step 2 & 3: Extract city codes and look up the given city
-    city_data = {}
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            text = page.extract_text()
-            lines = text.split('\n')
-            for line in lines:
-                parts = line.split()
-                if len(parts) >= 3 and all(len(part) <= 3 for part in parts[-2:]):
-                    city = " ".join(parts[:-2]).strip()
-                    city_code = parts[-2].strip()
-                    if any(keyword in city for keyword in ["Código", "Location", "Aeropuerto", "Airport"]):
-                        continue
-                    if city.lower() not in city_data:
-                        city_data[city.lower()] = []
-                    city_data[city.lower()].append(city_code)
-
-    # Normalize input and fetch city code
-    city_name = city_name.lower().strip()
-    codes = city_data.get(city_name)
-    if codes:
-        if len(codes) == 1:
-            return codes[0] 
-        else:
-            code = st.selectbox("Multiple codes found please select the right one: ", codes[0], codes[1])
-    else:
-        return f"No code found for {city_name}"
 
 
 def get_hotel_data(lat, lng, checkin, checkout):
