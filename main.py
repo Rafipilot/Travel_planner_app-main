@@ -5,8 +5,7 @@ from amadeus import Client, ResponseError
 from openai import OpenAI
 import requests
 import pandas as pd
-from googlesearch import search
-
+import pdfplumber
 
 
 
@@ -15,9 +14,10 @@ openai_key = st.secrets["openai_key"]
 am_auth = st.secrets["am_auth"]
 am_key = st.secrets["am_key"]
 google_api_key = st.secrets["google_api_key"]
-cse_id = st.secrets["cse"]
 st.set_page_config(layout="wide")
 
+
+print("PDF downloaded successfully!")
 
 st.markdown("""
     <style>
@@ -84,54 +84,29 @@ amadeus = Client(
     client_secret=am_auth
 )
 
-import requests
-
-def get_hotel_website(hotel_name):
-    # Your Google API key and CSE ID (Custom Search Engine ID)
-
-
-    
-    # Construct the search query
-    query = f"{hotel_name} official website"
-    
-    # URL for Google Custom Search API
-    search_url = "https://www.googleapis.com/customsearch/v1"
-    
-    # Parameters for the search
-    params = {
-        'q': query,
-        'key': google_api_key,
-        'cx': cse_id,  # Custom Search Engine ID
+def get_hotel_website(name):  
+    url = 'https://www.google.com/search'
+    headers = {
+        'Accept' : '*/*',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.82',
     }
-    
-    try:
-        # Make the request to the Google Custom Search API
-        response = requests.get(search_url, params=params)
-        response.raise_for_status()  # Raise an exception for HTTP errors
-        
-        # Parse the response
-        search_results = response.json()
-        
-        # Check if there are any results
-        if 'items' in search_results:
-            # Get the top result URL (first item in the list)
-            top_result = search_results['items'][0]['link']
-            return top_result
-        else:
-            return "No website found."
-    
-    except requests.exceptions.RequestException as e:
-        # Handle errors (e.g., rate limits, request failures)
-        print(f"Request failed: {e}")
-        return "Unable to get url"
+
+    parameters = {'q': name}
+    content = requests.get(url, headers = headers, params = parameters).text
+    soup = BeautifulSoup(content, 'html.parser')
+    search = soup.find(id = 'search')
+    first_link = search.find('a')
+    return first_link['href']
 
 
 def get_airline_name(code):
-    return airline_codes.get(code.upper(), "Unknown Airline Code")
+    try:
+        code = airline_codes.get(code.upper(), "Unknown Airline Code")
+    except Exception as e:
+        print("Error in getting airline code : ", e)
+    return 
 
-
-
-import requests
 
 def get_activities(city_name):
 
@@ -145,7 +120,6 @@ def get_activities(city_name):
             # Get latitude and longitude
             lat = geocode_data['results'][0]['geometry']['location']['lat']
             lng = geocode_data['results'][0]['geometry']['location']['lng']
-            print(f"Latitude: {lat}, Longitude: {lng}")
 
             #Use the Places API to get nearby activities (tourist attractions)
             places_url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
@@ -188,12 +162,6 @@ def get_activities(city_name):
                                 description = 'No description available'
                         else:
                             description = 'Error retrieving details'
-
-                        # Print the activity details
-                        print(f"Name: {name}")
-                        print(f"Address: {address}")
-                        print(f"Description: {description}")
-                        print('---')
 
                         # Append the activity details to the list
                         activities.append([name, address, description])
@@ -243,93 +211,115 @@ def get_average_temp(location, depart_date):
 
 def get_flight_price(departure, destination, depart_date, number_of_people, non_stop="true"):
     try:
-        # API call to Amadeus for direct flight offers only
+
+        # Make the API call with the provided data
         response = amadeus.shopping.flight_offers_search.get(
             originLocationCode=departure,
             destinationLocationCode=destination,
             departureDate=depart_date,
             adults=number_of_people,
             travelClass="ECONOMY",
-            nonStop=non_stop  # Only direct flights
+            nonStop=non_stop  # Direct flights only if True
         )
-        
-        # Parse the response to retrieve the carrier name and price
-        if response.status_code == 200:
+
+        if response.status_code == 200:   
+            # Check if we received any flight offers
             if len(response.data) == 0:
-                st.error("No direct flights from the location selected!")
+                print("No direct flights from the location selected!")
                 return None, None
             
-            # Loop through the flight offers to find a valid one
+            # Loop through the flight offers and extract relevant details
             for offer in response.data:
                 carrier_code = offer["itineraries"][0]["segments"][0]["carrierCode"]
                 price = float(offer["price"]["total"])  # Convert price to float
+                print(f"Carrier Code: {carrier_code}, Price: {price}")
                 return carrier_code, price
-        
+
         else:
-            st.error("Unable to retrieve flight data.")
+            # If status code is not 200, print error and response details
+            print("Error: Unable to retrieve flight data.")
+            print("Response Data:", response.result)
             return None, None
+
     except ResponseError as error:
-        st.error(f"API error: {error}")
+        # Catch and print any API errors
+        print(f"API error in getting flight prices: {error}")
+        print(f"Error Description: {error.description}")
         return None, None
 
-def get_city_code(city_name):
-    try:
-        #Get the city code based on the city name
-        city_info = amadeus.reference_data.locations.get(keyword=city_name, subType='CITY')
-        
-        # Check if the city is found
-        if not city_info.data:
-            return f"No city found for name: {city_name}"
-        
-        # Extract the city code from the first result
-        city_code = city_info.data[0]['iataCode']
-        return city_code
-    except Exception as e:
-        return "Error in getting city code"
-        print(e)
+
+def get_city_code(city_name, url="https://www.serveto.com/img/bloques/1432804003.pdf"):
+    # Step 1: Download the PDF
+    pdf_path = "city_codes.pdf"
+    response = requests.get(url)
+    with open(pdf_path, "wb") as file:
+        file.write(response.content)
+    print("PDF downloaded successfully!")
+
+    # Step 2 & 3: Extract city codes and look up the given city
+    city_data = {}
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            lines = text.split('\n')
+            for line in lines:
+                parts = line.split()
+                if len(parts) >= 3 and all(len(part) <= 3 for part in parts[-2:]):
+                    city = " ".join(parts[:-2]).strip()
+                    city_code = parts[-2].strip()
+                    if any(keyword in city for keyword in ["Código", "Location", "Aeropuerto", "Airport"]):
+                        continue
+                    if city.lower() not in city_data:
+                        city_data[city.lower()] = []
+                    city_data[city.lower()].append(city_code)
+
+    # Normalize input and fetch city code
+    city_name = city_name.lower().strip()
+    codes = city_data.get(city_name)
+    if codes:
+        if len(codes) == 1:
+            return codes[0] 
+        else:
+            code = st.selectbox("Multiple codes found please select the right one: ", codes[0], codes[1])
+    else:
+        return f"No code found for {city_name}"
+
 
 def get_hotel_data(city_code, checkin, checkout):
-    try:
-        
-        # Step 2: Get list of hotels in the specified city
+   # print(city_code, checkin, checkout)
+    try: 
         hotel_list = amadeus.reference_data.locations.hotels.by_city.get(cityCode=city_code)
-        
         hotel_offers = []
         hotel_ids = []
-        
         # Collect hotel IDs (Limit to 40 for simplicity)
         for i in hotel_list.data[:40]:  
             hotel_ids.append(i['hotelId'])
-        
-        # Step 3: Search for hotel offers based on the city and dates
+    
         search_hotels = amadeus.shopping.hotel_offers_search.get(
             hotelIds=hotel_ids,
             checkInDate=checkin,
             checkOutDate=checkout
         )
-        
         # Prepare hotel offers to print the result
         for hotel in search_hotels.data:
             # Get the hotel name
             hotel_name = hotel['hotel']['name']
             
             # Use Google search to find the official hotel website
-            hotel_website = get_hotel_website(hotel_name)
-            
+            print(hotel_name)
             hotel_offers.append({
                 'name': hotel_name,
                 'price': hotel['offers'][0]['price']['total'],  # First offer's price
-                'url': hotel_website  # Use the official website URL
+                'url': get_hotel_website(hotel_name)  
             })
+        print("hotel options: ", hotel_offers)
         return hotel_offers
     
     except Exception as e:
+        print("Error occured in getting hotel data: ", e)
         return f"An error occurred: {str(e)}"
 
 
-
-
-  
 
 # OpenAI client initialization
 client = OpenAI(api_key=openai_key)
@@ -343,11 +333,12 @@ number_of_people = st.text_input("Number of people traveling:")
 departure = st.text_input("Departure Airport Code (e.g., LHR for London Heathrow):")
 destination = st.text_input("Destination Airport Code (e.g., JFK for New York JFK):")
 price_point = st.slider("Budget", 1, 20000)
-city_destination = st.text_input("Destination City: ")
+city_destination = st.text_input("Destination City: ").lower()
 depart_date = st.date_input("Departure Date:")
 return_date = st.date_input("Return Date:")
 Cost = int(0)
-non_stop = "Yes"
+non_stop = "true"# For call to amadeus
+non_stop2 = "Yes"# For call to GPT
 # Calculate duration and validate dates
 d1 = datetime.strptime(str(depart_date), "%Y-%m-%d")
 d2 = datetime.strptime(str(return_date), "%Y-%m-%d")
@@ -361,14 +352,15 @@ if st.button("Generate"):
 
 
     city_code = get_city_code(city_destination)
-
+    print("city code:" ,city_code)
+    hotels = get_hotel_data(city_code, str(depart_date), str(return_date))
     actvities = get_activities(city_destination)
 
     # Retrieve and display fight information
     flight, flight_price = get_flight_price(departure, destination, str(depart_date), int(number_of_people))
     return_flight, return_flight_price = get_flight_price(destination, departure, str(return_date), int(number_of_people))
     if flight is None or return_flight is None:
-        non_stop = "No"
+        non_stop2 = "No"
         flight, flight_price = get_flight_price(departure, destination, str(depart_date), int(number_of_people), non_stop="false")
         return_flight, return_flight_price = get_flight_price(destination, departure, str(return_date), int(number_of_people), non_stop="false")
 
@@ -386,7 +378,7 @@ if st.button("Generate"):
 
 
 
-    hotels = get_hotel_data(city_code, str(depart_date), str(return_date))
+    
 
     if price_point and total_price_flight:
         hotel_info = ""
@@ -440,7 +432,7 @@ if st.button("Generate"):
             f"**Flight Information:**\n"
             f"- Airline: {airline_name}\n"
             f"- Price: ${total_price_flight} (Return tickets)\n"
-            f"- Non-stop: {non_stop}"
+            f"- Non-stop: {non_stop2}"
             f"- Flight Details: Departure from {departure} and return from {destination}. Include flight duration and any relevant details.\n\n"
             f"- URL to bookling page of airline, try to find it if possible, if not then just leave it out"
 
