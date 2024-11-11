@@ -84,6 +84,21 @@ amadeus = Client(
     client_secret=am_auth
 )
 
+
+def get_coords(city_name):
+    geocode_url = f'https://maps.googleapis.com/maps/api/geocode/json?address={city_name}&key={google_api_key}'
+    geocode_response = requests.get(geocode_url)
+
+
+    if geocode_response.status_code == 200:
+        geocode_data = geocode_response.json()
+        if geocode_data['status'] == 'OK' and geocode_data['results']:
+            # Get latitude and longitude
+            lat = geocode_data['results'][0]['geometry']['location']['lat']
+            lng = geocode_data['results'][0]['geometry']['location']['lng']
+
+    return lat, lng
+
 def get_hotel_website(name):  
     url = 'https://www.google.com/search'
     headers = {
@@ -108,74 +123,61 @@ def get_airline_name(code):
     return 
 
 
-def get_activities(city_name):
-
-    geocode_url = f'https://maps.googleapis.com/maps/api/geocode/json?address={city_name}&key={google_api_key}'
-    geocode_response = requests.get(geocode_url)
+def get_activities(city_name, lat ,lng):
 
 
-    if geocode_response.status_code == 200:
-        geocode_data = geocode_response.json()
-        if geocode_data['status'] == 'OK' and geocode_data['results']:
-            # Get latitude and longitude
-            lat = geocode_data['results'][0]['geometry']['location']['lat']
-            lng = geocode_data['results'][0]['geometry']['location']['lng']
+    #Use the Places API to get nearby activities (tourist attractions)
+    places_url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
+    places_params = {
+        'location': f'{lat},{lng}',  # Lat, Lng coordinates
+        'radius': 5000,  # Search within a 5 km radius 
+        'type': 'tourist_attraction',  # Type of places to search for
+        'key': google_api_key  
+    }
 
-            #Use the Places API to get nearby activities (tourist attractions)
-            places_url = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
-            places_params = {
-                'location': f'{lat},{lng}',  # Lat, Lng coordinates
-                'radius': 5000,  # Search within a 5 km radius 
-                'type': 'tourist_attraction',  # Type of places to search for
-                'key': google_api_key  
-            }
+    # Make the request to the Places API
+    places_response = requests.get(places_url, params=places_params)
 
-            # Make the request to the Places API
-            places_response = requests.get(places_url, params=places_params)
+    if places_response.status_code == 200:
+        places_data = places_response.json()
 
-            if places_response.status_code == 200:
-                places_data = places_response.json()
-
-                # Check if there are any results
-                if places_data['results']:
-                    activities = []
-                    for place in places_data['results']:
-                        name = place.get('name')
-                        address = place.get('vicinity')
-                        place_id = place.get('place_id')
+        # Check if there are any results
+        if places_data['results']:
+            activities = []
+            for place in places_data['results']:
+                name = place.get('name')
+                address = place.get('vicinity')
+                place_id = place.get('place_id')
 
 
-                        details_url = 'https://maps.googleapis.com/maps/api/place/details/json'
-                        details_params = {
-                            'place_id': place_id,
-                            'key': google_api_key
-                        }
+                details_url = 'https://maps.googleapis.com/maps/api/place/details/json'
+                details_params = {
+                    'place_id': place_id,
+                    'key': google_api_key
+                }
 
-                        # Make the request to the Place Details API
-                        details_response = requests.get(details_url, params=details_params)
-                        if details_response.status_code == 200:
-                            details_data = details_response.json()
-                            if details_data['status'] == 'OK':
-                                # Get the description from the Place Details API response
-                                description = details_data['result'].get('editorial_summary', {}).get('overview', 'No description available')
-                            else:
-                                description = 'No description available'
-                        else:
-                            description = 'Error retrieving details'
-
-                        # Append the activity details to the list
-                        activities.append([name, address, description])
-
-                    return activities
+                # Make the request to the Place Details API
+                details_response = requests.get(details_url, params=details_params)
+                if details_response.status_code == 200:
+                    details_data = details_response.json()
+                    if details_data['status'] == 'OK':
+                        # Get the description from the Place Details API response
+                        description = details_data['result'].get('editorial_summary', {}).get('overview', 'No description available')
+                    else:
+                        description = 'No description available'
                 else:
-                    print("No activities found near the city.")
-            else:
-                print("Error retrieving places:", places_response.status_code, places_response.text)
+                    description = 'Error retrieving details'
 
+                # Append the activity details to the list
+                activities.append([name, address, description])
+
+            return activities
         else:
-            print("No results found for the city.")
+            print("No activities found near the city.")
     else:
-        print("Error with geocoding:", geocode_response.status_code, geocode_response.text)
+        print("Error retrieving places:", places_response.status_code, places_response.text)
+
+
 
 
 
@@ -285,39 +287,42 @@ def get_city_code(city_name, url="https://www.serveto.com/img/bloques/1432804003
         return f"No code found for {city_name}"
 
 
-def get_hotel_data(city_code, checkin, checkout):
-   # print(city_code, checkin, checkout)
-    try: 
-        hotel_list = amadeus.reference_data.locations.hotels.by_city.get(cityCode=city_code)
+def get_hotel_data(lat, lng, checkin, checkout):
+    try:
+        hotel_list = amadeus.reference_data.locations.hotels.by_geocode.get(latitude = lat, longitude=lng, radius = 200)
+        if not hotel_list.data:
+            st.write("No hotels found")
+            return []
+        
         hotel_offers = []
-        hotel_ids = []
-        # Collect hotel IDs (Limit to 40 for simplicity)
-        for i in hotel_list.data[:40]:  
-            hotel_ids.append(i['hotelId'])
-    
+        hotel_ids = [hotel['hotelId'] for hotel in hotel_list.data[:40]]  # Retrieve more hotel IDs if needed
+
+        # Fetch hotel offers based on IDs and dates
         search_hotels = amadeus.shopping.hotel_offers_search.get(
             hotelIds=hotel_ids,
             checkInDate=checkin,
             checkOutDate=checkout
         )
-        # Prepare hotel offers to print the result
+        
+        if not search_hotels.data:
+            st.write("No hotel offers available for the given dates.")
+            return []
+
+        # Process hotel offers and retrieve booking information
         for hotel in search_hotels.data:
-            # Get the hotel name
             hotel_name = hotel['hotel']['name']
-            
-            # Use Google search to find the official hotel website
-            print(hotel_name)
-            hotel_offers.append({
-                'name': hotel_name,
-                'price': hotel['offers'][0]['price']['total'],  # First offer's price
-                'url': get_hotel_website(hotel_name)  
-            })
-        print("hotel options: ", hotel_offers)
+            price = hotel['offers'][0]['price']['total']
+            url = get_hotel_website(hotel_name)
+            hotel_offers.append({'name': hotel_name, 'price': price, "url": url})
+        
         return hotel_offers
     
     except Exception as e:
-        print("Error occured in getting hotel data: ", e)
-        return f"An error occurred: {str(e)}"
+        st.write("Error occurred in getting hotel data:", e)
+        return []
+
+
+
 
 
 
@@ -350,11 +355,10 @@ if duration <= 0:
 # Button to generate travel plan
 if st.button("Generate"):
 
+    lat, lng = get_coords(city_destination) # get coords of destination
 
-    city_code = get_city_code(city_destination)
-    print("city code:" ,city_code)
-    hotels = get_hotel_data(city_code, str(depart_date), str(return_date))
-    actvities = get_activities(city_destination)
+    hotels = get_hotel_data(lat, lng, str(depart_date), str(return_date))#get hotels based on coords
+    actvities = get_activities(city_destination, lat, lng)# get activities based on coords
 
     # Retrieve and display fight information
     flight, flight_price = get_flight_price(departure, destination, str(depart_date), int(number_of_people))
