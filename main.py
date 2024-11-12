@@ -118,10 +118,9 @@ def get_hotel_website(name):
 def get_airline_name(code):
     try:
         code = airline_codes.get(code.upper(), "Unknown Airline Code")
-        print("airline code :", code)
     except Exception as e:
         print("Error in getting airline code : ", e)
-    return 
+    return code
 
 
 def get_activities(city_name, lat ,lng):
