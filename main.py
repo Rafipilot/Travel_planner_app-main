@@ -298,14 +298,27 @@ client = OpenAI(api_key=openai_key)
 st.title("CityTravel.AI")
 
 
+url_airports = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat"
+df_airports = pd.read_csv(url_airports, header=None)
+df_airports.columns = ["AirportID", "Name", "City", "Country", "IATA", "ICAO", "Latitude", "Longitude", "Altitude",
+                       "Timezone", "DST", "TzDatabase", "Type", "Source"]
+
+# Filter for major airports
+major_airports = df_airports[df_airports['IATA'].notna()]
+airport_options = {row["IATA"]: f"{row['Name']} ({row['IATA']}) - {row['City']}, {row['Country']}" for _, row in major_airports.iterrows()}
+
 # Input fields
-number_of_people = st.text_input("Number of people traveling:")
-departure = st.text_input("Departure Airport Code (e.g., LHR for London Heathrow):")
-destination = st.text_input("Destination Airport Code (e.g., JFK for New York JFK):")
-price_point = st.slider("Budget", 1, 20000)
-city_destination = st.text_input("Destination City: ").lower()
-depart_date = st.date_input("Departure Date:")
-return_date = st.date_input("Return Date:")
+with st.sidebar:
+    st.subheader("Travel Details")
+    number_of_people = st.text_input("Number of people traveling:")
+    departure = st.selectbox("Departure Airport", options=airport_options.keys(),
+                                     format_func=lambda x: airport_options[x])
+    destination = st.selectbox("Destination Airport", options=airport_options.keys(),
+                                       format_func=lambda x: airport_options[x])
+    price_point = st.slider("Budget", 1, 20000)
+    city_destination = st.text_input("Destination City: ").lower()
+    depart_date = st.date_input("Departure Date:")
+    return_date = st.date_input("Return Date:")
 Cost = int(0)
 non_stop = "true"# For call to amadeus
 non_stop2 = "Yes"# For call to GPT
