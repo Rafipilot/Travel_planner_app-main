@@ -406,7 +406,7 @@ if st.button("Generate"):
         min_price_diff = float('inf')
         for hotel in hotels:
             hotel_info += f"- **{hotel['name']}**\n"
-            hotel_info += f"  - Price: {hotel['price']}\n"
+            hotel_info += f"  - Price: {hotel['price']*(duration-1)}\n"
             hotel_info += f"  - [Click here to book]({hotel['url']})\n"
 
             price = int(float(hotel['price']))
