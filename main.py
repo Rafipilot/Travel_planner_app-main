@@ -402,24 +402,34 @@ if st.button("Generate"):
     if price_point and total_price_flight:
         hotel_info = ""
         per_night_budget = (int(price_point - total_price_flight)) - 100 * duration
-        best_hotel = None
-        min_price_diff = float('inf')
-        for hotel in hotels:
-            hotel_info += f"- **{hotel['name']}**\n"
-            hotel_info += f"  - Price: {hotel['price']*(duration-1)}\n"
-            hotel_info += f"  - [Click here to book]({hotel['url']})\n"
+        # Initialize variables
+    best_hotels = []
+    min_price_diffs = []
 
-            price = int(float(hotel['price']))
-            price_diff = abs(per_night_budget - price)
-            if price_diff < min_price_diff:
-                min_price_diff = price_diff
-                best_hotel = hotel
+    # Find the four hotels with prices closest to the budget
+    for hotel in hotels:
+        hotel_info += f"- **{hotel['name']}**\n"
+        hotel_info += f"  - Price: {hotel['price'] * (duration - 1)}\n"
+        hotel_info += f"  - [Click here to book]({hotel['url']})\n"
 
-        with tabs[1]:
-            st.subheader("Recommended Hotel")
-            st.write(f"Hotel Name: {best_hotel['name']}")
-            st.write(f"Price for {duration - 1} nights: {best_hotel['price']}")
-            st.write(f"[Click here to book]({best_hotel['url']})")
+        price = int(float(hotel['price']))
+        price_diff = abs(per_night_budget - price)
+        
+        # Add each hotel to the list with its price difference
+        min_price_diffs.append((hotel, price_diff))
+
+        # Sort by price difference and select the top 4
+        min_price_diffs = sorted(min_price_diffs, key=lambda x: x[1])[:4]
+        best_hotels = [[hotel['name'], hotel['price'], hotel['url']] for hotel, diff in min_price_diffs]
+
+    # Display the recommended hotels
+    with tabs[1]:
+        st.subheader("Recommended Hotels")
+        for i, hotel in enumerate(best_hotels, start=1):
+            st.write(f"**Hotel {i}:** {hotel[0]}")
+            st.write(f"Price for {duration - 1} nights: {hotel[1]}")
+            st.write(f"[Click here to book]({hotel[2]})\n")
+
 
         with tabs[2]:
             st.subheader("Activities")
@@ -451,13 +461,11 @@ if st.button("Generate"):
 
             f"**Weather info**"
             f"{weather_info}"
-
-            f"**Hotel Recommendation**\n"
-            f"{best_hotel}"
-            f"- Price ({duration-1} nights): {best_hotel['price']}"
-            f"- CLick here to book your stay at {best_hotel}"
  
-
+            f"**Hotel Recommendation**\n"
+            f"{best_hotels}"
+            f"- Price ({duration-1} nights):"
+            f"- CLick here to book your stay at"
 
             f"**Activities and Attractions:**\n"
             f"- Based on the duration of the trip, suggest activities that are relevant to the destination. Maybe like 1-2 activites per day "
@@ -492,5 +500,5 @@ if st.button("Generate"):
         with tabs[3]:
             st.subheader("Your AI-Generated Travel Plan:")
             st.write(travel_plan)
-    else:
-        st.warning("Please fill in all fields to generate a travel plan.")
+else:
+    st.warning("Please fill in all fields to generate a travel plan.")
