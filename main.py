@@ -180,10 +180,6 @@ def get_activities(city_name, lat ,lng):
 
 
 
-
-
-
-
 def get_average_temp(location, depart_date):
     # Extract the month from the depart_date
     location = location.lower()
