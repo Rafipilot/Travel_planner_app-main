@@ -59,6 +59,7 @@ d1 = datetime.strptime(str(depart_date), "%Y-%m-%d")
 d2 = datetime.strptime(str(return_date), "%Y-%m-%d")
 #lat, lng = get_coords("athens")
 hotels = get_hotel_data("athens", str(depart_date), str(return_date))
-
+st.write("Hotels: ", hotels)
+st.write("numnber: ", len(hotels))
 for hotel in hotels:
     st.write(hotel)
