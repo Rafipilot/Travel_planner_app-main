@@ -16,9 +16,10 @@ amadeus = Client(
 def get_hotel_data(city, checkin, checkout):
     url = f"https://www.booking.com/searchresults.html?ss={city}&ssne={city}&ssne_untouched={city}&checkin={checkin}&checkout={checkout}&group_adults=2&no_rooms=1&group_children=0&sb_travel_purpose=leisure&selected_currency=USD"
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept-Language': 'en-US, en;q=0.5'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.4472.124 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.5'
     }
+
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()  # Check if request was successful
