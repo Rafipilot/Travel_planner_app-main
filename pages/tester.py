@@ -31,7 +31,6 @@ def get_hotels(city_name, check_in_date, check_out_date, google_api_key, min_pri
     return hotels
 
 # Example usage
-ser_api_key = '10db94a108804ffbe51d20b8d0205528b6731639cce38f477d65845d02151ebd'  
 city_name = 'London'  
 check_in_date = '2024-11-15'  
 check_out_date = '2024-11-20'  
