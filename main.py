@@ -333,12 +333,11 @@ if duration <= 0:
 # Button to generate travel plan
 if st.button("Generate"):
 
-    lat, lng = get_coords(city_destination) # get coords of destination
+    tabs = st.tabs(["Flights", "Hotels", "Activities", "Full Plan"])
 
-    hotels = get_hotel_data(lat, lng, str(depart_date), str(return_date))#get hotels based on coords
-    actvities = get_activities(city_destination, lat, lng)# get activities based on coords
-
-    # Retrieve and display fight information
+    lat, lng = get_coords(city_destination)
+    hotels = get_hotel_data(lat, lng, str(depart_date), str(return_date))
+    activities = get_activities(city_destination, lat, lng)
     flight, flight_price = get_flight_price(departure, destination, str(depart_date), int(number_of_people))
     return_flight, return_flight_price = get_flight_price(destination, departure, str(return_date), int(number_of_people))
     if flight is None or return_flight is None:
@@ -346,58 +345,48 @@ if st.button("Generate"):
         flight, flight_price = get_flight_price(departure, destination, str(depart_date), int(number_of_people), non_stop="false")
         return_flight, return_flight_price = get_flight_price(destination, departure, str(return_date), int(number_of_people), non_stop="false")
 
-
-
     airline_name = get_airline_name(flight)
-    # Calculate total flight price
     if flight_price is not None and return_flight_price is not None:
         total_price_flight = flight_price + return_flight_price
     else:
         st.error("Failed to retrieve complete flight information.")
-    Cost = Cost+ total_price_flight
-    # Retrieve and display hotel information
+    Cost = Cost + total_price_flight
 
-
-
-
-    
+    with tabs[0]:
+        st.subheader("Flight Options")
+        st.write("Airline name: ", airline_name)
+        st.write("Price: ", total_price_flight)
 
     if price_point and total_price_flight:
         hotel_info = ""
-        per_night_budget = (int(price_point - total_price_flight)) - 100*duration 
+        per_night_budget = (int(price_point - total_price_flight)) - 100 * duration
         best_hotel = None
         min_price_diff = float('inf')
         for hotel in hotels:
             hotel_info += f"- **{hotel['name']}**\n"
             hotel_info += f"  - Price: {hotel['price']}\n"
-            hotel_info += f"  - [Click here to book]({hotel['url']})\n"  
-            print("URL: ", hotel['url'])
-            
+            hotel_info += f"  - [Click here to book]({hotel['url']})\n"
 
-            
-            # Extract price from the price string (removes non-numeric characters)
             price = int(float(hotel['price']))
-
-            
-            # Calculate the price difference from the per-night budget
             price_diff = abs(per_night_budget - price)
-            
-            # Select the hotel with the smallest difference to the per-night budget
             if price_diff < min_price_diff:
                 min_price_diff = price_diff
                 best_hotel = hotel
 
-        # Return the best hotel found
-        if best_hotel:
-            print(f"Best Hotel: {best_hotel['name']}")
-            print(f"Best Price: {best_hotel['price']}")
-        else:
-            print("No suitable hotel found.")
-            
-        # After the loop, best_hotel will be the best-matching hotel based on budget
-        price = int(float(hotel['price']))
-        Cost = Cost+  price  
-        Cost = Cost + 20*int(duration)*2*int(number_of_people) #Adding estimate for meals
+        with tabs[1]:
+            st.subheader("Recommended Hotel")
+            st.write(f"Hotel Name: {best_hotel['name']}")
+            st.write(f"Price for {duration - 1} nights: {best_hotel['price']}")
+            st.write(f"[Click here to book]({best_hotel['url']})")
+
+        with tabs[2]:
+            st.subheader("Activities")
+            for activity in activities[:duration]:
+                st.write(f"- **{activity[0]}**")
+                st.write(f"  - Location: {activity[1]}")
+                st.write(f"  - Description: {activity[2]}")
+
+        Cost = Cost + price + 20 * int(duration) * 2 * int(number_of_people)
         # Constructing the GPT prompt 
         prompt = (
             f"You are an expert travel planner. Based on the details provided below, create a structured, "
@@ -430,7 +419,7 @@ if st.button("Generate"):
 
             f"**Activities and Attractions:**\n"
             f"- Based on the duration of the trip, suggest activities that are relevant to the destination. Maybe like 1-2 activites per day "
-            f"actvities list: {actvities}\n"
+            f"actvities list: {activities}\n"
             f"- Include brief descriptions of each activity and links to booking or more details if available.\n\n"
 
             f"**Day-by-Day Itinerary:**\n"
@@ -450,17 +439,16 @@ if st.button("Generate"):
             f"with clear steps for the traveler to enjoy their journey."
         )
 
-        # Make the OpenAI API call
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "system", "content": prompt}],
             max_tokens=1200,
             temperature=0.7,
         )
-
         travel_plan = response.choices[0].message.content
-        st.subheader("Your AI-Generated Travel Plan:")
-        st.write(travel_plan)
 
+        with tabs[3]:
+            st.subheader("Your AI-Generated Travel Plan:")
+            st.write(travel_plan)
     else:
         st.warning("Please fill in all fields to generate a travel plan.")
