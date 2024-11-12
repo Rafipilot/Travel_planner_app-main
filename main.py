@@ -5,15 +5,15 @@ from amadeus import Client, ResponseError
 from openai import OpenAI
 import requests
 import pandas as pd
-import pdfplumber
-
-
+from serpapi import GoogleSearch
+import re 
 
 # Importing secret keys
 openai_key = st.secrets["openai_key"]
 am_auth = st.secrets["am_auth"]
 am_key = st.secrets["am_key"]
 google_api_key = st.secrets["google_api_key"]
+ser_api_key = st.secrets["ser_api_key"]
 st.set_page_config(layout="wide")
 
 
@@ -247,7 +247,53 @@ def get_flight_price(departure, destination, depart_date, number_of_people, non_
 
 
 
-def get_hotel_data(lat, lng, checkin, checkout):
+def get_hotel_data(city_name, lat, lng, checkin, checkout, min_price=None, max_price=None, currency='USD', rating=None):
+    try:
+        # Define parameters for the request
+        params = {
+            'engine': 'google_hotels',
+            'q': f"Hotels in {city_name}",
+            'check_in_date': checkin,
+            'check_out_date': checkout,
+            'api_key': ser_api_key,
+            'currency': currency,
+            'min_price': min_price,
+            'max_price': max_price,
+        }
+        
+        search = GoogleSearch(params)
+        results = search.get_dict()
+        
+        # Check if there are results in the response
+        hotels = []
+        if 'properties' in results:
+            for property in results['properties']:
+                price_string = property.get('rate_per_night', {}).get('lowest', 'Price not available')
+                # Remove non-numeric characters (like '$', commas, etc.)
+                price_clean = re.sub(r'[^\d.]', '', price_string)
+                
+                # Convert to float, if it's valid
+                try:
+                    price = float(price_clean)
+                except ValueError:
+                    price = None  # In case conversion fails
+                
+                hotel_data = {
+                    'name': property.get('name'),
+                    'price': price if price is not None else 'Price not available',
+                    'url': property.get('link', 'No URL available')
+                }
+                hotels.append(hotel_data)
+            
+            if len(hotels) != 0:
+                print(hotels)
+                return hotels
+            else:
+                print(hotels)
+                print("No hotels found with serapi")
+    except Exception as e:
+        print("Error with serapi", e)
+
     try:
         hotel_list = amadeus.reference_data.locations.hotels.by_geocode.get(latitude = lat, longitude=lng, radius = 200)
         if not hotel_list.data:
@@ -280,6 +326,7 @@ def get_hotel_data(lat, lng, checkin, checkout):
     except Exception as e:
         st.write("Error occurred in getting hotel data:", e)
         return []
+
 
 
 
@@ -331,7 +378,7 @@ if st.button("Generate"):
     tabs = st.tabs(["Flights", "Hotels", "Activities", "Full Plan"])
 
     lat, lng = get_coords(city_destination)
-    hotels = get_hotel_data(lat, lng, str(depart_date), str(return_date))
+    hotels = get_hotel_data(city_destination, lat, lng, str(depart_date), str(return_date))
     activities = get_activities(city_destination, lat, lng)
     flight, flight_price = get_flight_price(departure, destination, str(depart_date), int(number_of_people))
     return_flight, return_flight_price = get_flight_price(destination, departure, str(return_date), int(number_of_people))
