@@ -437,6 +437,8 @@ if st.button("Generate"):
                 st.write(f"- **{activity[0]}**")
                 st.write(f"  - Location: {activity[1]}")
                 st.write(f"  - Description: {activity[2]}")
+                website = get_hotel_website(activity[0])
+                st.write(f"Website: {website}")
 
         Cost = Cost + price + 20 * int(duration) * 2 * int(number_of_people)
         # Constructing the GPT prompt 
@@ -461,6 +463,7 @@ if st.button("Generate"):
 
             f"**Weather info**"
             f"{weather_info}"
+            f"Based on weather info give some tips to the traveller(s)"
  
             f"**Hotel Recommendation**\n"
             f"{best_hotels}"
