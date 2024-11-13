@@ -1,46 +1,54 @@
-from serpapi import GoogleSearch
+import streamlit as st
+from amadeus import Client, ResponseError
+from datetime import datetime
+am_auth = st.secrets["am_auth"]
+am_key = st.secrets["am_key"]
 
-# Function to get hotels data from SerpAPI Google Hotels API
-def get_hotels(city_name, check_in_date, check_out_date, google_api_key, min_price=None, max_price=None, currency='USD', rating=None):
-    # Define parameters for the request
-    params = {
-        'engine': 'google_hotels',
-        'q': f"Hotels in {city_name}",
-        'check_in_date': check_in_date,
-        'check_out_date': check_out_date,
-        'api_key': google_api_key,
-        'currency': currency,
-        'min_price': min_price,
-        'max_price': max_price,
-    }
+amadeus = Client(
+    client_id=am_key,
+    client_secret=am_auth
+)
+
+def get_flight_price(departure, destination, depart_date, number_of_people=3, non_stop="true"):
+    try:
+
+        # Make the API call with the provided data
+        response = amadeus.shopping.flight_offers_search.get(
+            originLocationCode=departure,
+            destinationLocationCode=destination,
+            departureDate=depart_date,
+            adults=number_of_people,
+            travelClass="ECONOMY",
+            nonStop=non_stop  # Direct flights only if True
+        )
+
+        if response.status_code == 200:   
+            # Check if we received any flight offers
+            if len(response.data) == 0:
+                print("No direct flights from the location selected!")
+                return None, None
+            
+            # Loop through the flight offers and extract relevant details
+            for offer in response.data:
+                carrier_code = offer["itineraries"][0]["segments"][0]["carrierCode"]
+                price = float(offer["price"]["total"])  # Convert price to float
+                print(f"Carrier Code: {carrier_code}, Price: {price}")
+                return carrier_code, price
+
+        else:
+            # If status code is not 200, print error and response details
+            print("Error: Unable to retrieve flight data.")
+            print("Response Data:", response.result)
+            return None, None
+
+    except ResponseError as error:
+        # Catch and print any API errors
+        print(f"API error in getting flight prices: {error}")
+        print(f"Error Description: {error.description}")
+        return None, None
     
-    search = GoogleSearch(params)
-    results = search.get_dict()
-    
-    # Check if there are results in the response
-    hotels = []
-    if 'properties' in results:
-        for property in results['properties']:
-            hotel_data = {
-                'name': property.get('name'),
-                'price': property.get('rate_per_night', {}).get('lowest', 'Price not available'),
-                'url': property.get('serpapi_property_details_link', 'No URL available')
-            }
-            hotels.append(hotel_data)
-    
-    return hotels
 
-# Example usage
-city_name = 'London'  
-check_in_date = '2024-11-15'  
-check_out_date = '2024-11-20'  
-
-# Call the function to get hotels
-hotels_info = get_hotels(city_name, check_in_date, check_out_date, ser_api_key)
-
-# Print the extracted hotel data
-print(hotels_info)
-for hotel in hotels_info:
-    print(hotel["name"])
-    print(hotel["price"])
-
+depart_date = st.date_input("Departure Date:", min_value=datetime.today())
+code, price = get_flight_price(departure="LHR", destination="FCO", depart_date=depart_date)
+print(code, price)
+return_date = st.date_input("Return Date:", min_value=depart_date)

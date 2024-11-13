@@ -14,55 +14,13 @@ am_auth = st.secrets["am_auth"]
 am_key = st.secrets["am_key"]
 google_api_key = st.secrets["google_api_key"]
 ser_api_key = st.secrets["ser_api_key"]
-st.set_page_config(layout="wide")
 
+st.set_page_config(layout="wide", page_title="CityTravel.AI", page_icon=":airplane:")
+
+if 'form_started' not in st.session_state:
+    st.session_state['form_started'] = False
 
 print("PDF downloaded successfully!")
-
-st.markdown("""
-    <style>
-        .main {
-            background-color: #f7f7f7;
-            font-family: 'Arial', sans-serif;
-        }
-        .stButton>button {
-            background-color: #4CAF50;
-            color: white;
-            font-size: 18px;
-            padding: 15px;
-            border-radius: 8px;
-            border: none;
-        }
-        .stButton>button:hover {
-            background-color: #45a049;
-            color: white;
-        }
-        .stSlider>div>label {
-            font-size: 16px;
-            color: #333;
-        }
-        .stTextInput>div>label {
-            font-size: 16px;
-            color: #333;
-        }
-        .stTitle {
-            font-size: 32px;
-            color: #1e2a47;
-            font-weight: bold;
-        }
-        .stSubheader {
-            font-size: 20px;
-            font-weight: 500;
-            color: #444;
-        }
-        .stWarning>div>label {
-            color: #f8d7da;
-            background-color: #f1b0b7;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-
 
 # Load the CSV file directly from the URL For getting airline name from code
 url_airline_codes = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airlines.dat" #Data set for code to name
@@ -286,7 +244,6 @@ def get_hotel_data(city_name, lat, lng, checkin, checkout, min_price=None, max_p
                 hotels.append(hotel_data)
             
             if len(hotels) != 0:
-                print(hotels)
                 return hotels
             else:
                 print(hotels)
@@ -328,17 +285,8 @@ def get_hotel_data(city_name, lat, lng, checkin, checkout, min_price=None, max_p
         return []
 
 
-
-
-
-
-
 # OpenAI client initialization
 client = OpenAI(api_key=openai_key)
-
-# Display Title of the App
-st.title("CityTravel.AI")
-
 
 url_airports = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat"
 df_airports = pd.read_csv(url_airports, header=None)
@@ -349,159 +297,218 @@ df_airports.columns = ["AirportID", "Name", "City", "Country", "IATA", "ICAO", "
 major_airports = df_airports[df_airports['IATA'].notna()]
 airport_options = {row["IATA"]: f"{row['Name']} ({row['IATA']}) - {row['City']}, {row['Country']}" for _, row in major_airports.iterrows()}
 
-# Input fields
-with st.sidebar:
-    st.subheader("Travel Details")
-    number_of_people = st.text_input("Number of people traveling:")
-    departure = st.selectbox("Departure Airport", options=airport_options.keys(),
-                                     format_func=lambda x: airport_options[x])
-    destination = st.selectbox("Destination Airport", options=airport_options.keys(),
-                                       format_func=lambda x: airport_options[x])
-    price_point = st.slider("Budget", 1, 20000)
-    city_destination = st.text_input("Destination City: ").lower()
-    depart_date = st.date_input("Departure Date:")
-    return_date = st.date_input("Return Date:")
-Cost = int(0)
-non_stop = "true"# For call to amadeus
-non_stop2 = "Yes"# For call to GPT
-# Calculate duration and validate dates
-d1 = datetime.strptime(str(depart_date), "%Y-%m-%d")
-d2 = datetime.strptime(str(return_date), "%Y-%m-%d")
-duration = (d2 - d1).days
-weather_info = get_average_temp(city_destination, depart_date)
-if duration <= 0:
-    st.error("Return date must be after departure date.")
 
-# Button to generate travel plan
-if st.button("Generate"):
+st.markdown("""
+    <style>
+        .main {
+            background: linear-gradient(135deg, #6e8efb, #a777e3);
+            color: #f9f9f9;
+            font-family: 'Arial', sans-serif;
+        }
+        .title {
+            font-size: 3.5rem;
+            color: #ffffff;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        .subtitle {
+            font-size: 1.7rem;
+            color: #e0e0e0;
+            margin-bottom: 20px;
+        }
+        .start-button {
+            font-size: 1.5rem;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .start-button:hover {
+            background-color: #45a049;
+        }
+    </style>
+    
 
-    tabs = st.tabs(["Flights", "Hotels", "Activities", "Full Plan"])
-
-    lat, lng = get_coords(city_destination)
-    hotels = get_hotel_data(city_destination, lat, lng, str(depart_date), str(return_date))
-    activities = get_activities(city_destination, lat, lng)
-    flight, flight_price = get_flight_price(departure, destination, str(depart_date), int(number_of_people))
-    return_flight, return_flight_price = get_flight_price(destination, departure, str(return_date), int(number_of_people))
-    if flight is None or return_flight is None:
-        non_stop2 = "No"
-        flight, flight_price = get_flight_price(departure, destination, str(depart_date), int(number_of_people), non_stop="false")
-        return_flight, return_flight_price = get_flight_price(destination, departure, str(return_date), int(number_of_people), non_stop="false")
-
-    airline_name = get_airline_name(flight)
-    if flight_price is not None and return_flight_price is not None:
-        total_price_flight = flight_price + return_flight_price
-    else:
-        st.error("Failed to retrieve complete flight information.")
-    Cost = Cost + total_price_flight
-
-    with tabs[0]:
-        st.subheader("Flight Options")
-        st.write("Airline name: ", airline_name)
-        st.write("Price: ", total_price_flight)
-
-    if price_point and total_price_flight:
-        hotel_info = ""
-        per_night_budget = (int(price_point - total_price_flight)) - 100 * duration
-        # Initialize variables
-    best_hotels = []
-    min_price_diffs = []
-
-    # Find the four hotels with prices closest to the budget
-    for hotel in hotels:
-        hotel_info += f"- **{hotel['name']}**\n"
-        hotel_info += f"  - Price: {hotel['price'] * (duration - 1)}\n"
-        hotel_info += f"  - [Click here to book]({hotel['url']})\n"
-
-        price = int(float(hotel['price']))
-        price_diff = abs(per_night_budget - price)
-        
-        # Add each hotel to the list with its price difference
-        min_price_diffs.append((hotel, price_diff))
-
-        # Sort by price difference and select the top 4
-        min_price_diffs = sorted(min_price_diffs, key=lambda x: x[1])[:4]
-        best_hotels = [[hotel['name'], hotel['price'], hotel['url']] for hotel, diff in min_price_diffs]
-
-    # Display the recommended hotels
-    with tabs[1]:
-        st.subheader("Recommended Hotels")
-        for i, hotel in enumerate(best_hotels, start=1):
-            st.write(f"**Hotel {i}:** {hotel[0]}")
-            st.write(f"Price for {duration - 1} nights: {hotel[1]}")
-            st.write(f"[Click here to book]({hotel[2]})\n")
+""", unsafe_allow_html=True)
 
 
-        with tabs[2]:
-            st.subheader("Activities")
-            for activity in activities[:duration]:
-                st.write(f"- **{activity[0]}**")
-                st.write(f"  - Location: {activity[1]}")
-                st.write(f"  - Description: {activity[2]}")
-                website = get_hotel_website(activity[0])
-                st.write(f"Website: {website}")
+if not st.session_state["form_started"]:
+    # Define the landing page content
+    st.markdown("<div class='landing-container'>", unsafe_allow_html=True)
+    st.markdown("<div class='title animate'>🌍 CityTravel.AI</div>", unsafe_allow_html=True)
+    st.markdown("<div class='subtitle animate'>Plan your next adventure with ease!</div>", unsafe_allow_html=True)
+    st.markdown("""
+        <div class='info-text animate'>
+            Discover amazing destinations, find the best flights and hotels, and explore personalized activity recommendations.
+            CityTravel.AI is your all-in-one travel planner, designed to make your trip planning seamless and enjoyable.
+        </div>
+    """, unsafe_allow_html=True)
 
-        Cost = Cost + price + 20 * int(duration) * 2 * int(number_of_people)
-        # Constructing the GPT prompt 
-        prompt = (
-            f"You are an expert travel planner. Based on the details provided below, create a structured, "
-            f"personalized, and informative travel plan. The plan should be balanced, staying within the given "
-            f"budget and trip duration. Please follow the guidelines for each section:\n\n"
+    st.write("")
+    # Add the start button
+    if st.button("Start Planning", key="start", help="Click here to begin your travel planning journey!", args=('form_started', True)):
+        st.session_state['form_started'] = True
+        st.rerun()
 
-            f"**Trip Overview:**\n"
-            f"- Budget: {price_point}$\n"
-            f"- Trip Duration: {duration} days\n"
-            f"- Number of Travelers: {number_of_people}\n"
-            f"- Departure Location: {departure}\n"
-            f"- Destination Location: {destination}\n\n"
 
-            f"**Flight Information:**\n"
-            f"- Airline: {airline_name}\n"
-            f"- Price: ${total_price_flight} (Return tickets)\n"
-            f"- Non-stop: {non_stop2}"
-            f"- Flight Details: Departure from {departure} and return from {destination}. Include flight duration and any relevant details.\n\n"
-            f"- URL to bookling page of airline, try to find it if possible, if not then just leave it out"
 
-            f"**Weather info**"
-            f"{weather_info}"
-            f"Based on weather info give some tips to the traveller(s)"
- 
-            f"**Hotel Recommendation**\n"
-            f"{best_hotels}"
-            f"- Price ({duration-1} nights):"
-            f"- CLick here to book your stay at"
 
-            f"**Activities and Attractions:**\n"
-            f"- Based on the duration of the trip, suggest activities that are relevant to the destination. Maybe like 1-2 activites per day "
-            f"actvities list: {activities}\n"
-            f"- Include brief descriptions of each activity and links to booking or more details if available.\n\n"
+if st.session_state["form_started"]:
+    # Input fields
+    with st.sidebar:
+        st.subheader("Travel Details")
+        number_of_people = st.text_input("Number of people traveling:")
+        departure = st.selectbox("Departure Airport", options=airport_options.keys(),
+                                        format_func=lambda x: airport_options[x])
+        destination = st.selectbox("Destination Airport", options=airport_options.keys(),
+                                        format_func=lambda x: airport_options[x])
+        price_point = st.slider("Budget", 1, 20000)
+        city_destination = st.text_input("Destination City: ").lower()
+        depart_date = st.date_input("Departure Date:", min_value=datetime.today())
+        return_date = st.date_input("Return Date:", min_value=depart_date)
+    Cost = int(0)
+    non_stop = "true"# For call to amadeus
+    non_stop2 = "Yes"# For call to GPT
+    # Calculate duration and validate dates
+    d1 = datetime.strptime(str(depart_date), "%Y-%m-%d")
+    d2 = datetime.strptime(str(return_date), "%Y-%m-%d")
+    duration = (d2 - d1).days
+    weather_info = get_average_temp(city_destination, depart_date)
+    if duration <= 0:
+        st.warning("Return date must be after departure date.")
 
-            f"**Day-by-Day Itinerary:**\n"
-            f"- Create a detailed day-by-day itinerary based on the trip duration. Include suggested times for activities, "
-            f"transportation tips, and meal recommendations.\n"
-            f"Include the days that the Traveller(s) arrive"
-            f"- Balance the itinerary to avoid overwhelming the traveler, but also ensure that the trip is fulfilling and diverse.\n\n"
+    # Button to generate travel plan
+    if st.button("Generate"):
 
-            f"**Budget Breakdown:**\n"
-            f"- Cost: {Cost} This is including Hotel, Flights and estimate for meals\n\n"
+        tabs = st.tabs(["Flights", "Hotels", "Activities", "Full Plan"])
 
-            f"**Additional Tips:**\n"
-            f"- Provide useful travel tips, such as advice on local customs, transportation options (e.g., metro, taxis), and "
-            f"any cultural insights specific to {city_destination}.\n\n"
+        lat, lng = get_coords(city_destination)
+        hotels = get_hotel_data(city_destination, lat, lng, str(depart_date), str(return_date))
 
-            f"Ensure that the plan is practical, engaging, and inspiring. The tone should be exciting and easy to follow, "
-            f"with clear steps for the traveler to enjoy their journey."
-        )
+        activities = get_activities(city_destination, lat, lng)
+        print(departure, destination, depart_date, number_of_people)
+        flight, flight_price = get_flight_price(departure, destination, str(depart_date), int(number_of_people))
+        return_flight, return_flight_price = get_flight_price(destination, departure, str(return_date), int(number_of_people))
+        if flight is None or return_flight is None:
+            non_stop2 = "No"
+            flight, flight_price = get_flight_price(departure, destination, str(depart_date), int(number_of_people), non_stop="false")
+            return_flight, return_flight_price = get_flight_price(destination, departure, str(return_date), int(number_of_people), non_stop="false")
 
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": prompt}],
-            max_tokens=1200,
-            temperature=0.7,
-        )
-        travel_plan = response.choices[0].message.content
+        airline_name = get_airline_name(flight)
+        if flight_price is not None and return_flight_price is not None:
+            total_price_flight = flight_price + return_flight_price
+        else:
+            st.error("Failed to retrieve complete flight information.")
+        Cost = Cost + total_price_flight
 
-        with tabs[3]:
-            st.subheader("Your AI-Generated Travel Plan:")
-            st.write(travel_plan)
-else:
-    st.warning("Please fill in all fields to generate a travel plan.")
+        with tabs[0]:
+            st.subheader("Flight Options")
+            st.write("Airline name: ", airline_name)
+            st.write("Price: ", total_price_flight)
+
+        if price_point and total_price_flight:
+            hotel_info = ""
+            per_night_budget = (int(price_point - total_price_flight)) - 100 * duration
+            # Initialize variables
+        best_hotels = []
+        min_price_diffs = []
+
+        # Find the four hotels with prices closest to the budget
+        for hotel in hotels:
+            hotel_info += f"- **{hotel['name']}**\n"
+            hotel_info += f"  - Price: {hotel['price'] * (duration - 1)}\n"
+            hotel_info += f"  - [Click here to book]({hotel['url']})\n"
+
+            price = int(float(hotel['price']))
+            price_diff = abs(per_night_budget - price)
+            
+            # Add each hotel to the list with its price difference
+            min_price_diffs.append((hotel, price_diff))
+
+            # Sort by price difference and select the top 4
+            min_price_diffs = sorted(min_price_diffs, key=lambda x: x[1])[:4]
+            best_hotels = [[hotel['name'], hotel['price'], hotel['url']] for hotel, diff in min_price_diffs]
+
+        # Display the recommended hotels
+        with tabs[1]:
+            st.subheader("Recommended Hotels")
+            for i, hotel in enumerate(best_hotels, start=1):
+                st.write(f"**Hotel {i}:** {hotel[0]}")
+                st.write(f"Price for {duration - 1} nights: {hotel[1]}")
+                st.write(f"[Click here to book]({hotel[2]})\n")
+
+
+            with tabs[2]:
+                st.subheader("Activities")
+                for activity in activities[:duration]:
+                    st.write(f"- **{activity[0]}**")
+                    st.write(f"  - Location: {activity[1]}")
+                    st.write(f"  - Description: {activity[2]}")
+                    website = get_hotel_website(activity[0])
+                    st.write(f"Website: {website}")
+
+            Cost = Cost + price + 20 * int(duration) * 2 * int(number_of_people)
+            # Constructing the GPT prompt 
+            prompt = (
+                f"You are an expert travel planner. Based on the details provided below, create a structured, "
+                f"personalized, and informative travel plan. The plan should be balanced, staying within the given "
+                f"budget and trip duration. Please follow the guidelines for each section:\n\n"
+
+                f"**Trip Overview:**\n"
+                f"- Budget: {price_point}$\n"
+                f"- Trip Duration: {duration} days\n"
+                f"- Number of Travelers: {number_of_people}\n"
+                f"- Departure Location: {departure}\n"
+                f"- Destination Location: {destination}\n\n"
+
+                f"**Flight Information:**\n"
+                f"- Airline: {airline_name}\n"
+                f"- Price: ${total_price_flight} (Return tickets)\n"
+                f"- Non-stop: {non_stop2}"
+                f"- Flight Details: Departure from {departure} and return from {destination}. Include flight duration and any relevant details.\n\n"
+                f"- URL to bookling page of airline, try to find it if possible, if not then just leave it out"
+
+                f"**Weather info**"
+                f"{weather_info}"
+                f"Based on weather info give some tips to the traveller(s)"
+    
+                f"**Hotel Recommendation**\n"
+                f"{best_hotels}"
+                f"- Price ({duration-1} nights):"
+                f"- CLick here to book your stay at"
+
+                f"**Activities and Attractions:**\n"
+                f"- Based on the duration of the trip, suggest activities that are relevant to the destination. Maybe like 1-2 activites per day "
+                f"actvities list: {activities}\n"
+                f"- Include brief descriptions of each activity and links to booking or more details if available.\n\n"
+
+                f"**Day-by-Day Itinerary:**\n"
+                f"- Create a detailed day-by-day itinerary based on the trip duration. Include suggested times for activities, "
+                f"transportation tips, and meal recommendations.\n"
+                f"Include the days that the Traveller(s) arrive"
+                f"- Balance the itinerary to avoid overwhelming the traveler, but also ensure that the trip is fulfilling and diverse.\n\n"
+
+                f"**Budget Breakdown:**\n"
+                f"- Cost: {Cost} This is including Hotel, Flights and estimate for meals\n\n"
+
+                f"**Additional Tips:**\n"
+                f"- Provide useful travel tips, such as advice on local customs, transportation options (e.g., metro, taxis), and "
+                f"any cultural insights specific to {city_destination}.\n\n"
+
+                f"Ensure that the plan is practical, engaging, and inspiring. The tone should be exciting and easy to follow, "
+                f"with clear steps for the traveler to enjoy their journey."
+            )
+
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "system", "content": prompt}],
+                max_tokens=1200,
+                temperature=0.7,
+            )
+            travel_plan = response.choices[0].message.content
+
+            with tabs[3]:
+                st.subheader("Your AI-Generated Travel Plan:")
+                st.write(travel_plan)
